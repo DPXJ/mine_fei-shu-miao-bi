@@ -54,7 +54,9 @@ export default function EditorWorkspace({ document, onBack }: Props) {
       const content = await documentService.getDocumentContent(document.doc_id)
       setBlocks(content.blocks)
     } catch (error: any) {
-      message.error('加载文档内容失败：' + (error.response?.data?.detail || error.message))
+      const detail = error.response?.data?.detail
+      const text = typeof detail === 'string' ? detail : (detail?.message || error.message)
+      message.error('加载文档内容失败：' + text)
     } finally {
       setLoading(false)
     }
@@ -90,7 +92,9 @@ export default function EditorWorkspace({ document, onBack }: Props) {
       
       setInstruction('')
     } catch (error: any) {
-      message.error('生成失败：' + (error.response?.data?.detail || error.message))
+      const detail = error.response?.data?.detail
+      const text = typeof detail === 'string' ? detail : (detail?.message || error.message)
+      message.error('生成失败：' + text)
     } finally {
       setGenerating(false)
     }

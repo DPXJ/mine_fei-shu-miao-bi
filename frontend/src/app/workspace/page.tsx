@@ -46,7 +46,9 @@ export default function WorkspacePage() {
       setDocuments(docs)
       setFilteredDocs(docs)
     } catch (error: any) {
-      message.error('加载文档失败：' + (error.response?.data?.detail || error.message))
+      const detail = error.response?.data?.detail
+      const text = typeof detail === 'string' ? detail : (detail?.message || error.message)
+      message.error('加载文档失败：' + text)
     } finally {
       setLoading(false)
     }

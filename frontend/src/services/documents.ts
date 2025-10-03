@@ -42,7 +42,7 @@ class DocumentService {
   async getDocuments(pageSize: number = 20): Promise<Document[]> {
     const response = await axios.get(`${API_URL}/api/documents/list`, {
       headers: this.getHeaders(),
-      params: { page_size: pageSize },
+      params: { page_size: pageSize, order_by: 'EditedTime', direction: 'Desc' },
     })
     return response.data.documents
   }
