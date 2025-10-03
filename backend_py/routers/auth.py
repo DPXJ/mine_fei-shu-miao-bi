@@ -36,12 +36,12 @@ async def get_auth_url():
     if not app_id or not redirect_uri:
         raise HTTPException(status_code=500, detail="飞书应用配置缺失")
     
-    # 飞书OAuth授权URL
+    # 飞书 OAuth 授权 URL（Authen v1）
+    # 使用 index 并确保 redirect_uri 已 URL 编码（前端一般传已编码的值，这里按原样使用）
     auth_url = (
-        f"https://open.feishu.cn/open-apis/authen/v1/authorize?"
+        f"https://open.feishu.cn/open-apis/authen/v1/index?"
         f"app_id={app_id}&"
         f"redirect_uri={redirect_uri}&"
-        f"response_type=code&"
         f"state=STATE"
     )
     
@@ -79,9 +79,9 @@ async def exchange_token(request: TokenRequest):
             
             app_access_token = app_token_data.get("app_access_token")
             
-            # 2. 使用code换取user_access_token
+            # 2. 使用 code 换取 user_access_token（Authen v1）
             token_response = await client.post(
-                "https://open.feishu.cn/open-apis/authen/v1/oidc/access_token",
+                "https://open.feishu.cn/open-apis/authen/v1/access_token",
                 headers={
                     "Authorization": f"Bearer {app_access_token}",
                     "Content-Type": "application/json"
@@ -95,9 +95,13 @@ async def exchange_token(request: TokenRequest):
             token_data = token_response.json()
             
             if token_data.get("code") != 0:
+                # 将飞书原始响应一并返回，便于定位
                 raise HTTPException(
                     status_code=400,
-                    detail=f"获取access_token失败: {token_data.get('msg')}"
+                    detail={
+                        "message": "获取access_token失败",
+                        "feishu_response": token_data
+                    }
                 )
             
             data = token_data.get("data", {})
