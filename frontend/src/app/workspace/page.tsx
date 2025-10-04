@@ -46,9 +46,12 @@ export default function WorkspacePage() {
       setDocuments(docs)
       setFilteredDocs(docs)
     } catch (error: any) {
-      const detail = error.response?.data?.detail
-      const text = typeof detail === 'string' ? detail : (detail?.message || error.message)
-      message.error('加载文档失败：' + text)
+      // 确保错误消息是字符串
+      const errorMessage = error.response?.data?.detail?.message || 
+                         error.response?.data?.detail || 
+                         error.message || 
+                         '加载文档失败'
+      message.error(`加载文档失败：${errorMessage}`)
     } finally {
       setLoading(false)
     }
@@ -140,7 +143,7 @@ export default function WorkspacePage() {
                         title={<Text strong>{doc.title}</Text>}
                         description={
                           <Text type="secondary">
-                            更新时间: {new Date(parseInt(doc.updated_at)).toLocaleString('zh-CN')}
+                            更新时间: {doc.updated_at}
                           </Text>
                         }
                       />

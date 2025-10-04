@@ -39,10 +39,14 @@ class DocumentService {
   /**
    * 获取文档列表
    */
-  async getDocuments(pageSize: number = 20): Promise<Document[]> {
+  async getDocuments(
+    pageSize: number = 20,
+    orderBy: string = "EditedTime",
+    direction: string = "DESC"
+  ): Promise<Document[]> {
     const response = await axios.get(`${API_URL}/api/documents/list`, {
       headers: this.getHeaders(),
-      params: { page_size: pageSize, order_by: 'EditedTime', direction: 'Desc' },
+      params: { page_size: pageSize, order_by: orderBy, direction: direction },
     })
     return response.data.documents
   }

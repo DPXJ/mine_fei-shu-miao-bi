@@ -51,6 +51,15 @@ async def create_article(
     首次生成文章
     """
     try:
+        print(f"AI Create request received: doc_id={request.doc_id}, blocks_count={len(request.blocks)}")
+        
+        # 检查Gemini API Key
+        gemini_key = os.getenv("GEMINI_API_KEY")
+        if not gemini_key:
+            raise HTTPException(status_code=500, detail="Gemini API Key未配置")
+        
+        print(f"Gemini API Key configured: {gemini_key[:10]}...")
+        
         token = authorization.replace("Bearer ", "")
         
         # 准备内容
@@ -103,11 +112,14 @@ async def create_article(
             user_prompt += f"\n\n注意：文档中包含 {len(image_parts)} 张图片，请在文章合适位置标记图片插入点。"
         
         # 调用Gemini API
+        print("Initializing Gemini model...")
         model = genai.GenerativeModel("gemini-1.5-pro")
         
         # 构建消息内容
         contents = [user_prompt]
+        print(f"Generated prompt length: {len(user_prompt)}")
         
+        print("Calling Gemini API...")
         response = model.generate_content(
             contents,
             generation_config=genai.GenerationConfig(
@@ -116,7 +128,9 @@ async def create_article(
             )
         )
         
+        print("Gemini API response received")
         generated_text = response.text
+        print(f"Generated text length: {len(generated_text)}")
         
         # 创建会话
         session_id = f"{request.doc_id}_{os.urandom(8).hex()}"

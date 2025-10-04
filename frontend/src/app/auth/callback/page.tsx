@@ -25,7 +25,12 @@ function CallbackContent() {
         router.push('/workspace')
       } catch (error: any) {
         console.error('Token exchange failed:', error)
-        message.error(error.response?.data?.detail || '登录失败，请重试')
+        // 确保错误消息是字符串
+        const errorMessage = error.response?.data?.detail?.message || 
+                           error.response?.data?.detail || 
+                           error.message || 
+                           '登录失败，请重试'
+        message.error(`登录失败：${errorMessage}`)
         router.push('/')
       }
     }

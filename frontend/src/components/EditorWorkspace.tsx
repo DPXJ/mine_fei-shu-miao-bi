@@ -52,17 +52,28 @@ export default function EditorWorkspace({ document, onBack }: Props) {
     try {
       setLoading(true)
       const content = await documentService.getDocumentContent(document.doc_id)
+      console.log('Document content loaded:', content)
+      console.log('Blocks:', content.blocks)
+      console.log('Text blocks:', content.blocks.filter(block => block.block_type === 'text'))
+      console.log('Image blocks:', content.blocks.filter(block => block.block_type === 'image'))
       setBlocks(content.blocks)
     } catch (error: any) {
-      const detail = error.response?.data?.detail
-      const text = typeof detail === 'string' ? detail : (detail?.message || error.message)
-      message.error('加载文档内容失败：' + text)
+      // 确保错误消息是字符串
+      const errorMessage = error.response?.data?.detail?.message || 
+                         error.response?.data?.detail || 
+                         error.message || 
+                         '加载文档内容失败'
+      message.error(`加载文档内容失败：${errorMessage}`)
     } finally {
       setLoading(false)
     }
   }
 
   const handleGenerate = async () => {
+    console.log('Generate button clicked!')
+    console.log('Instruction:', instruction)
+    console.log('Blocks:', blocks)
+    
     if (!instruction.trim()) {
       message.warning('请输入创作指令')
       return
@@ -70,14 +81,17 @@ export default function EditorWorkspace({ document, onBack }: Props) {
 
     try {
       setGenerating(true)
+      console.log('Starting AI generation...')
       
       if (!sessionId) {
         // 首次生成
+        console.log('First time generation, calling createArticle...')
         const response = await aiService.createArticle(
           document.doc_id,
           blocks,
           instruction
         )
+        console.log('AI response received:', response)
         setArticle(response.content)
         setSessionId(response.session_id)
         setMessages(response.messages)
@@ -92,9 +106,12 @@ export default function EditorWorkspace({ document, onBack }: Props) {
       
       setInstruction('')
     } catch (error: any) {
-      const detail = error.response?.data?.detail
-      const text = typeof detail === 'string' ? detail : (detail?.message || error.message)
-      message.error('生成失败：' + text)
+      // 确保错误消息是字符串
+      const errorMessage = error.response?.data?.detail?.message || 
+                         error.response?.data?.detail || 
+                         error.message || 
+                         '生成失败'
+      message.error(`生成失败：${errorMessage}`)
     } finally {
       setGenerating(false)
     }
@@ -174,6 +191,50 @@ export default function EditorWorkspace({ document, onBack }: Props) {
 
       {/* 右侧创作区 */}
       <Content className="flex flex-col bg-gray-50" style={{ height: 'calc(100vh - 64px)' }}>
+        {/* 文档内容预览区 */}
+        <div className="bg-white border-b p-4 max-h-64 overflow-y-auto">
+          <Title level={5} className="!mb-3">文档内容预览</Title>
+          {blocks.length > 0 ? (
+            <div className="space-y-3">
+              {blocks.map((block, index) => (
+                <div key={block.block_id} className="border rounded p-3 bg-gray-50">
+                  {block.block_type === 'text' ? (
+                    <div>
+                      <Text type="secondary" className="text-xs mb-1 block">
+                        文本块 #{index + 1}
+                      </Text>
+                      <Paragraph className="!mb-0 text-sm">
+                        {block.text || '（无文本内容）'}
+                      </Paragraph>
+                    </div>
+                  ) : block.block_type === 'image' ? (
+                    <div>
+                      <Text type="secondary" className="text-xs mb-1 block">
+                        图片块 #{index + 1}
+                      </Text>
+                      <div className="flex items-center gap-2">
+                        <FileImageOutlined />
+                        <Text type="secondary" className="text-xs">
+                          图片已加载
+                        </Text>
+                      </div>
+                    </div>
+                  ) : (
+                    <Text type="secondary" className="text-xs">
+                      未知块类型: {block.block_type}
+                    </Text>
+                  )}
+                </div>
+              ))}
+            </div>
+          ) : (
+            <Empty
+              description="暂无文档内容"
+              image={Empty.PRESENTED_IMAGE_SIMPLE}
+            />
+          )}
+        </div>
+
         <div className="flex-1 overflow-y-auto p-6">
           {article ? (
             <Card className="max-w-4xl mx-auto">

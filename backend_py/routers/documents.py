@@ -41,7 +41,9 @@ class DocumentContent(BaseModel):
 async def get_documents(
     authorization: str = Header(...),
     page_size: int = 20,
-    page_token: Optional[str] = None
+    page_token: Optional[str] = None,
+    order_by: str = "EditedTime",
+    direction: str = "DESC"
 ):
     """
     获取用户的飞书文档列表
@@ -54,7 +56,8 @@ async def get_documents(
             # 获取文档列表
             params = {
                 "page_size": page_size,
-                "order_by": "EditedTime"
+                "order_by": order_by,
+                "direction": direction
             }
             if page_token:
                 params["page_token"] = page_token
@@ -80,11 +83,25 @@ async def get_documents(
             documents = []
             for file in files:
                 if file.get("type") == "docx":
+                    # 处理时间戳 - 飞书返回的是毫秒级时间戳
+                    modified_time = file.get("modified_time", "")
+                    if modified_time:
+                        try:
+                            # 飞书时间戳是毫秒级，需要转换为秒级
+                            timestamp = int(modified_time) / 1000
+                            from datetime import datetime
+                            dt = datetime.fromtimestamp(timestamp)
+                            modified_time = dt.strftime("%Y-%m-%d %H:%M:%S")
+                        except (ValueError, TypeError):
+                            modified_time = "未知时间"
+                    else:
+                        modified_time = "未知时间"
+                    
                     documents.append(Document(
                         doc_id=file.get("token"),
                         title=file.get("name", "未命名文档"),
                         doc_type=file.get("type"),
-                        updated_at=file.get("modified_time", ""),
+                        updated_at=modified_time,
                         url=file.get("url", "")
                     ))
             
@@ -125,7 +142,105 @@ async def get_document_content(
             
             title = doc_data.get("data", {}).get("document", {}).get("title", "未命名")
             
-            # 获取文档所有块
+            # 直接使用blocks API获取文档内容（按照官方文档）
+            print(f"Fetching blocks for doc_id: {doc_id}")
+            blocks_response = await client.get(
+                f"https://open.feishu.cn/open-apis/docx/v1/documents/{doc_id}/blocks",
+                headers={"Authorization": f"Bearer {token}"},
+                params={
+                    "page_size": 500,
+                    "document_revision_id": -1,  # 获取最新版本
+                    "user_id_type": "open_id"
+                }
+            )
+            
+            blocks_data = blocks_response.json()
+            print(f"Blocks API response code: {blocks_data.get('code')}")
+            print(f"Blocks API response: {blocks_data}")
+            
+            if blocks_data.get("code") != 0:
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"获取文档blocks失败: {blocks_data.get('msg')} (code: {blocks_data.get('code')})"
+                )
+            
+            raw_blocks = blocks_data.get("data", {}).get("items", [])
+            print(f"Found {len(raw_blocks)} blocks")
+            
+            # 解析内容块
+            content_blocks = []
+            for i, block in enumerate(raw_blocks):
+                block_type = block.get("block_type")
+                block_id = block.get("block_id")
+                print(f"Block {i}: type={block_type}, id={block_id}")
+                print(f"Block content: {block}")
+                
+                # 处理不同类型的文本块
+                text_content = None
+                text_source = ""
+                
+                if block_type == 1:  # 页面/标题块
+                    text_content = block.get("page", {})
+                    text_source = "page"
+                elif block_type == 2:  # 普通文本块
+                    text_content = block.get("text", {})
+                    text_source = "text"
+                elif block_type == 4:  # 标题块
+                    text_content = block.get("heading2", {})
+                    text_source = "heading2"
+                elif block_type == 5:  # 其他标题块
+                    text_content = block.get("heading1", {}) or block.get("heading3", {})
+                    text_source = "heading1/3"
+                
+                if text_content:
+                    print(f"Block {i} ({text_source}): {text_content}")
+                    elements = text_content.get("elements", [])
+                    print(f"Elements: {elements}")
+                    
+                    if elements:
+                        text = extract_text_from_elements(elements)
+                        print(f"Extracted text: '{text}'")
+                        
+                        if text.strip():
+                            content_blocks.append(ContentBlock(
+                                block_id=block_id,
+                                block_type="text",
+                                text=text
+                            ))
+                            print(f"Added text block: {text[:50]}...")
+                
+                elif block_type == 27:  # 图片块
+                    image = block.get("image", {})
+                    image_token = image.get("token")
+                    if image_token:
+                        content_blocks.append(ContentBlock(
+                            block_id=block_id,
+                            block_type="image",
+                            image_token=image_token
+                        ))
+                        print(f"Added image block: {image_token}")
+                
+                else:
+                    print(f"Unhandled block type: {block_type}")
+            
+            print(f"Total content blocks created: {len(content_blocks)}")
+            
+            return DocumentContent(
+                doc_id=doc_id,
+                title=title,
+                blocks=content_blocks
+            )
+            
+    except httpx.HTTPError as e:
+        raise HTTPException(status_code=500, detail=f"网络请求失败: {str(e)}")
+
+
+async def get_document_content_fallback(doc_id: str, token: str, title: str):
+    """
+    回退方法：使用blocks API获取文档内容
+    """
+    try:
+        async with httpx.AsyncClient() as client:
             blocks_response = await client.get(
                 f"https://open.feishu.cn/open-apis/docx/v1/documents/{doc_id}/blocks",
                 headers={"Authorization": f"Bearer {token}"},
@@ -144,22 +259,13 @@ async def get_document_content(
             
             # 解析内容块
             content_blocks = []
+            print(f"Fallback: Total blocks found: {len(raw_blocks)}")
+            
             for block in raw_blocks:
                 block_type = block.get("block_type")
                 block_id = block.get("block_id")
                 
-                if block_type == 1:  # 文本块
-                    text_content = block.get("text", {})
-                    if text_content:
-                        text = extract_text_from_elements(text_content.get("elements", []))
-                        if text.strip():
-                            content_blocks.append(ContentBlock(
-                                block_id=block_id,
-                                block_type="text",
-                                text=text
-                            ))
-                
-                elif block_type == 27:  # 图片块
+                if block_type == 27:  # 图片块
                     image = block.get("image", {})
                     image_token = image.get("token")
                     if image_token:
@@ -175,21 +281,27 @@ async def get_document_content(
                 blocks=content_blocks
             )
             
-    except httpx.HTTPError as e:
-        raise HTTPException(status_code=500, detail=f"网络请求失败: {str(e)}")
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"回退方法失败: {str(e)}")
 
 
 @router.get("/image/{doc_id}/{image_token}")
 async def get_image(
     doc_id: str,
     image_token: str,
-    authorization: str = Header(...)
+    token: str = None,
+    authorization: str = Header(None)
 ):
     """
     获取图片数据（返回图片URL或base64）
     """
     try:
-        token = authorization.replace("Bearer ", "")
+        # 优先从query parameter获取token，如果没有则从header获取
+        if not token and authorization:
+            token = authorization.replace("Bearer ", "")
+        
+        if not token:
+            raise HTTPException(status_code=401, detail="缺少认证token")
         
         async with httpx.AsyncClient() as client:
             # 下载图片
@@ -218,9 +330,19 @@ def extract_text_from_elements(elements: List[dict]) -> str:
     """
     text_parts = []
     for element in elements:
+        # 尝试多种可能的文本字段
         if element.get("text_run"):
             content = element["text_run"].get("content", "")
             text_parts.append(content)
+        elif element.get("text"):
+            content = element.get("text", "")
+            text_parts.append(content)
+        elif element.get("content"):
+            content = element.get("content", "")
+            text_parts.append(content)
+        elif isinstance(element, str):
+            text_parts.append(element)
+    
     return "".join(text_parts)
 
 
