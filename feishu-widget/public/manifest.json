@@ -1,0 +1,13 @@
+{
+  "name": "AI文档助手",
+  "description": "智能内容创作,让你的文档更专业",
+  "version": "1.0.0",
+  "type": "doc_block",
+  "permissions": [
+    "docx:read",
+    "docx:write"
+  ],
+  "icon": "https://your-domain.com/icon.png",
+  "entry": "index.html"
+}
+

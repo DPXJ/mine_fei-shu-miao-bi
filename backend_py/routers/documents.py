@@ -408,33 +408,41 @@ async def create_feishu_document(
                         })
                     continue
                 
-                # 检查是否是标题
-                if line.startswith('### '):
+                # 检查是否是标题(从最长的开始检查,避免误匹配)
+                if line.startswith('####'):
+                    # 四级标题在飞书中不存在,转为三级标题
                     blocks_to_create.append({
-                        "block_type": 4,  # 三级标题
+                        "block_type": 5,  # 三级标题
                         "heading3": {
-                            "elements": [{"text_run": {"content": line[4:]}}]
+                            "elements": [{"text_run": {"content": line[5:].strip()}}]
                         }
                     })
-                elif line.startswith('## '):
+                elif line.startswith('###'):
                     blocks_to_create.append({
-                        "block_type": 3,  # 二级标题
+                        "block_type": 5,  # 三级标题
+                        "heading3": {
+                            "elements": [{"text_run": {"content": line[4:].strip()}}]
+                        }
+                    })
+                elif line.startswith('##'):
+                    blocks_to_create.append({
+                        "block_type": 4,  # 二级标题
                         "heading2": {
-                            "elements": [{"text_run": {"content": line[3:]}}]
+                            "elements": [{"text_run": {"content": line[3:].strip()}}]
                         }
                     })
-                elif line.startswith('# '):
+                elif line.startswith('#'):
                     blocks_to_create.append({
-                        "block_type": 2,  # 一级标题
+                        "block_type": 3,  # 一级标题
                         "heading1": {
-                            "elements": [{"text_run": {"content": line[2:]}}]
+                            "elements": [{"text_run": {"content": line[2:].strip()}}]
                         }
                     })
                 else:
                     # 普通文本
                     blocks_to_create.append({
-                        "block_type": 1,  # 文本块类型是1
-                        "text": {
+                        "block_type": 2,  # 文本块类型是2
+                        "paragraph": {
                             "elements": [{"text_run": {"content": line}}]
                         }
                     })
@@ -462,6 +470,23 @@ async def create_feishu_document(
                         
                         print(f"Creating batch {batch_idx + 1}/{total_batches}: {len(batch_blocks)} blocks")
                         
+                        # 调试：打印前3个block的结构
+                        if batch_blocks:
+                            import json
+                            for i, block in enumerate(batch_blocks[:3]):
+                                print(f"Block {i+1} structure: {json.dumps(block, ensure_ascii=False, indent=2)}")
+                        
+                        # 测试：只发送第一个block
+                        test_block = [{
+                            "block_type": 2,
+                            "text": {
+                                "elements": [{"text_run": {"content": "测试文本"}}],
+                                "style": {}
+                            }
+                        }]
+                        
+                        print(f"Testing with simple block: {json.dumps(test_block, ensure_ascii=False, indent=2)}")
+                        
                         children_response = await client.post(
                             f"https://open.feishu.cn/open-apis/docx/v1/documents/{doc_id}/blocks/{root_block_id}/children",
                             headers={
@@ -469,8 +494,7 @@ async def create_feishu_document(
                                 "Content-Type": "application/json"
                             },
                             json={
-                                "children": batch_blocks,
-                                "index": start_idx  # 指定插入位置
+                                "children": test_block
                             }
                         )
                         

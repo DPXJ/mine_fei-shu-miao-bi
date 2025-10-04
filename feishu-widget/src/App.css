@@ -1,0 +1,71 @@
+/* 基础样式 */
+body {
+  margin: 0;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen',
+    'Ubuntu', 'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica Neue',
+    sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  background-color: #f5f5f5;
+}
+
+#root {
+  min-height: 100vh;
+}
+
+/* 卡片样式 */
+.ant-card {
+  border-radius: 8px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+}
+
+/* 按钮样式 */
+.ant-btn {
+  border-radius: 6px;
+}
+
+.ant-btn-primary {
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  border: none;
+}
+
+.ant-btn-primary:hover {
+  background: linear-gradient(135deg, #5a6fd8 0%, #6a4190 100%);
+}
+
+/* 输入框样式 */
+.ant-input, .ant-input-affix-wrapper {
+  border-radius: 6px;
+}
+
+.ant-input:focus, .ant-input-affix-wrapper:focus,
+.ant-input-focused, .ant-input-affix-wrapper-focused {
+  border-color: #667eea;
+  box-shadow: 0 0 0 2px rgba(102, 126, 234, 0.2);
+}
+
+/* 标签样式 */
+.ant-tag {
+  border-radius: 4px;
+}
+
+/* 消息提示样式 */
+.ant-message {
+  top: 24px;
+}
+
+/* 加载动画 */
+.ant-spin-nested-loading > div > .ant-spin {
+  max-height: none;
+}
+
+/* 响应式设计 */
+@media (max-width: 768px) {
+  .ant-card {
+    margin: 10px;
+  }
+  
+  .ant-typography-title {
+    font-size: 20px !important;
+  }
+}

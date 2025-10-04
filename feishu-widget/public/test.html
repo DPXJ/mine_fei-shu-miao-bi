@@ -1,0 +1,262 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>飞书文档AI助手小组件 - 测试页面</title>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', sans-serif;
+            margin: 0;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+        .container {
+            max-width: 800px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 8px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+            padding: 20px;
+        }
+        .header {
+            text-align: center;
+            margin-bottom: 30px;
+        }
+        .title {
+            font-size: 24px;
+            font-weight: bold;
+            color: #333;
+            margin-bottom: 10px;
+        }
+        .subtitle {
+            color: #666;
+            font-size: 14px;
+        }
+        .alert {
+            background: #e6f7ff;
+            border: 1px solid #91d5ff;
+            border-radius: 4px;
+            padding: 12px;
+            margin-bottom: 20px;
+        }
+        .alert-title {
+            font-weight: bold;
+            color: #1890ff;
+        }
+        .section {
+            margin-bottom: 20px;
+        }
+        .section-title {
+            font-weight: bold;
+            margin-bottom: 10px;
+            color: #333;
+        }
+        .doc-preview {
+            background: #f9f9f9;
+            border: 1px solid #e8e8e8;
+            border-radius: 4px;
+            padding: 15px;
+            margin-bottom: 15px;
+        }
+        .tag {
+            display: inline-block;
+            background: #1890ff;
+            color: white;
+            padding: 2px 8px;
+            border-radius: 4px;
+            font-size: 12px;
+            margin-right: 8px;
+            margin-bottom: 8px;
+        }
+        .input-area {
+            width: 100%;
+            min-height: 80px;
+            border: 1px solid #d9d9d9;
+            border-radius: 4px;
+            padding: 8px;
+            font-size: 14px;
+            resize: vertical;
+        }
+        .button-group {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 15px;
+        }
+        .btn {
+            padding: 8px 16px;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 14px;
+        }
+        .btn-primary {
+            background: #1890ff;
+            color: white;
+        }
+        .btn-primary:hover {
+            background: #40a9ff;
+        }
+        .btn-secondary {
+            background: #f0f0f0;
+            color: #333;
+        }
+        .btn-secondary:hover {
+            background: #e6e6e6;
+        }
+        .result-area {
+            background: #f9f9f9;
+            border: 1px solid #e8e8e8;
+            border-radius: 4px;
+            padding: 15px;
+            min-height: 100px;
+            white-space: pre-wrap;
+            font-size: 14px;
+            line-height: 1.5;
+        }
+        .loading {
+            color: #1890ff;
+            text-align: center;
+            padding: 20px;
+        }
+        .status {
+            background: #f6ffed;
+            border: 1px solid #b7eb8f;
+            border-radius: 4px;
+            padding: 12px;
+            margin-bottom: 20px;
+        }
+        .status-title {
+            font-weight: bold;
+            color: #52c41a;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <div class="title">🤖 AI文档助手</div>
+            <div class="subtitle">智能理解文档内容，一键生成高质量文章</div>
+        </div>
+
+        <div class="status">
+            <div class="status-title">✅ 服务器状态正常</div>
+            测试页面加载成功！HTTP服务器工作正常。
+        </div>
+
+        <div class="alert">
+            <div class="alert-title">开发模式</div>
+            正在使用模拟数据，实际部署后会读取真实文档内容
+        </div>
+
+        <div class="section">
+            <div class="section-title">📄 当前文档</div>
+            <div class="doc-preview">
+                <div>
+                    <span class="tag">2 段文本</span>
+                    <span class="tag">2 张图片</span>
+                </div>
+                <div style="margin-top: 10px; color: #666;">
+                    # 测试文档标题<br>
+                    这是一段测试内容，用于演示AI文档助手的功能。<br>
+                    GitHub配机子,还有Couplate WeFly、腾讯库和阿里云。
+                </div>
+            </div>
+        </div>
+
+        <div class="section">
+            <div class="section-title">✨ AI指令</div>
+            <textarea 
+                class="input-area" 
+                id="instruction" 
+                placeholder="请输入你的需求，例如：润色、专业化、活泼化..."
+            >请帮我润色这段内容</textarea>
+        </div>
+
+        <div class="section">
+            <div class="button-group">
+                <button class="btn btn-secondary" onclick="setInstruction('润色')">润色</button>
+                <button class="btn btn-secondary" onclick="setInstruction('专业化')">专业化</button>
+                <button class="btn btn-secondary" onclick="setInstruction('活泼化')">活泼化</button>
+                <button class="btn btn-secondary" onclick="setInstruction('简洁化')">简洁化</button>
+            </div>
+            <button class="btn btn-primary" onclick="generateContent()" style="width: 100%; padding: 12px;">
+                ✨ 生成内容
+            </button>
+        </div>
+
+        <div class="section">
+            <div class="section-title">✅ 生成结果</div>
+            <div class="result-area" id="result">
+                点击"生成内容"按钮开始AI创作...
+            </div>
+        </div>
+    </div>
+
+    <script>
+        function setInstruction(text) {
+            document.getElementById('instruction').value = text;
+        }
+
+        async function generateContent() {
+            const instruction = document.getElementById('instruction').value;
+            const resultArea = document.getElementById('result');
+            
+            if (!instruction.trim()) {
+                alert('请输入AI指令');
+                return;
+            }
+
+            resultArea.innerHTML = '<div class="loading">🤖 AI正在生成内容，请稍候...</div>';
+
+            try {
+                const response = await fetch('http://localhost:8000/api/ai/create', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        doc_id: 'widget_doc',
+                        blocks: [
+                            {
+                                type: 'text',
+                                text: '# 测试文档标题\n这是一段测试内容，用于演示AI文档助手的功能。\nGitHub配机子,还有Couplate WeFly、腾讯库和阿里云。'
+                            },
+                            {
+                                type: 'image',
+                                token: 'mock_image_token_1'
+                            }
+                        ],
+                        instruction: instruction
+                    })
+                });
+
+                if (!response.ok) {
+                    throw new Error(`HTTP错误: ${response.status} ${response.statusText}`);
+                }
+
+                const result = await response.json();
+                resultArea.textContent = result.content || '生成成功，但内容为空';
+                
+            } catch (error) {
+                console.error('生成失败:', error);
+                resultArea.textContent = `生成失败: ${error.message}\n\n请检查：\n1. 后端服务是否启动 (http://localhost:8000)\n2. 网络连接是否正常\n3. 浏览器控制台是否有错误信息\n\n详细错误: ${error.stack}`;
+            }
+        }
+
+        // 页面加载时测试后端连接
+        window.onload = async function() {
+            try {
+                const response = await fetch('http://localhost:8000/docs', { method: 'HEAD' });
+                if (response.ok) {
+                    console.log('✅ 后端服务连接正常');
+                } else {
+                    console.log('⚠️ 后端服务响应异常');
+                }
+            } catch (error) {
+                console.log('❌ 后端服务连接失败:', error.message);
+            }
+        };
+    </script>
+</body>
+</html>
