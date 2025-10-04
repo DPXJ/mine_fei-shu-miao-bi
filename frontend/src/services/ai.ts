@@ -89,6 +89,25 @@ class AIService {
     )
     return response.data
   }
+
+  /**
+   * 预览重新排版后的文章（包含图片）
+   */
+  async previewArticle(sessionId: string): Promise<{
+    session_id: string
+    doc_id: string
+    article_content: string
+    images: Array<{mime_type: string; data: string}>
+    original_blocks: ContentBlock[]
+  }> {
+    const response = await axios.get(
+      `${API_URL}/api/ai/preview/${sessionId}`,
+      {
+        headers: this.getHeaders(),
+      }
+    )
+    return response.data
+  }
 }
 
 export const aiService = new AIService()

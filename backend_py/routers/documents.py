@@ -285,6 +285,230 @@ async def get_document_content_fallback(doc_id: str, token: str, title: str):
         raise HTTPException(status_code=500, detail=f"回退方法失败: {str(e)}")
 
 
+@router.post("/create")
+async def create_feishu_document(
+    request: dict,
+    authorization: str = Header(...)
+):
+    """
+    创建新的飞书文档并写入内容
+    """
+    try:
+        token = authorization.replace("Bearer ", "")
+        title = request.get("title", "AI生成的文章")
+        content = request.get("content", "")
+        images = request.get("images", [])  # [{mime_type: str, data: str (base64)}]
+        
+        async with httpx.AsyncClient(timeout=60.0) as client:
+            # 1. 创建新文档 - 清理标题中的特殊字符
+            import re
+            # 移除或替换特殊字符，避免GBK编码问题
+            clean_title = re.sub(r'[^\w\s\-_\.\(\)\[\]（）【】]', '', title)
+            if not clean_title.strip():
+                clean_title = "AI创作文档"
+            
+            print(f"Original title: {title}")
+            print(f"Clean title: {clean_title}")
+            
+            create_response = await client.post(
+                "https://open.feishu.cn/open-apis/docx/v1/documents",
+                headers={
+                    "Authorization": f"Bearer {token}",
+                    "Content-Type": "application/json"
+                },
+                json={
+                    "title": clean_title,
+                    "folder_token": ""  # 创建在根目录
+                }
+            )
+            
+            create_data = create_response.json()
+            print(f"Create document response: {create_data}")
+            
+            if create_data.get("code") != 0:
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"创建文档失败: {create_data.get('msg')}"
+                )
+            
+            doc_id = create_data.get("data", {}).get("document", {}).get("document_id")
+            doc_url = f"https://feishu.cn/docx/{doc_id}"
+            
+            # 2. 上传图片到飞书（如果有）
+            image_tokens = {}
+            for idx, img in enumerate(images):
+                try:
+                    import io
+                    import base64
+                    import time
+                    
+                    # 解码base64图片
+                    img_data = base64.b64decode(img['data'])
+                    
+                    # 上传图片 - 使用正确的multipart/form-data格式
+                    files = {
+                        'file': (f'image_{idx+1}.jpg', io.BytesIO(img_data), img.get('mime_type', 'image/jpeg'))
+                    }
+                    
+                    # 注意：parent_type和parent_node必须一起传
+                    upload_response = await client.post(
+                        "https://open.feishu.cn/open-apis/drive/v1/medias/upload_all",
+                        headers={"Authorization": f"Bearer {token}"},
+                        files=files,
+                        data={
+                            "file_name": f'image_{idx+1}.jpg',
+                            "parent_type": "docx_image",
+                            "parent_node": doc_id,
+                            "size": str(len(img_data))
+                        }
+                    )
+                    
+                    # 限速：避免触发频率限制
+                    time.sleep(0.3)
+                    
+                    upload_data = upload_response.json()
+                    print(f"Upload image {idx+1} response: {upload_data}")
+                    
+                    if upload_data.get("code") == 0:
+                        file_token = upload_data.get("data", {}).get("file_token")
+                        image_tokens[f"image_{idx+1}"] = file_token
+                        print(f"Image {idx+1} uploaded successfully: {file_token}")
+                    else:
+                        print(f"Image {idx+1} upload failed: {upload_data.get('msg')}")
+                        
+                except Exception as e:
+                    print(f"Error uploading image {idx+1}: {e}")
+            
+            # 3. 解析Markdown并转换为飞书blocks
+            # 将 ![描述](image_N) 替换为实际的图片token
+            import re
+            
+            # 按行处理内容
+            lines = content.split('\n')
+            blocks_to_create = []
+            
+            for line in lines:
+                line = line.strip()
+                if not line:
+                    continue
+                
+                # 检查是否是图片标记
+                img_match = re.match(r'!\[([^\]]*)\]\(image_(\d+)\)', line)
+                if img_match:
+                    img_num = img_match.group(2)
+                    img_key = f"image_{img_num}"
+                    
+                    if img_key in image_tokens:
+                        # 添加图片块
+                        blocks_to_create.append({
+                            "block_type": 27,  # 图片类型
+                            "image": {
+                                "token": image_tokens[img_key]
+                            }
+                        })
+                    continue
+                
+                # 检查是否是标题
+                if line.startswith('### '):
+                    blocks_to_create.append({
+                        "block_type": 4,  # 三级标题
+                        "heading3": {
+                            "elements": [{"text_run": {"content": line[4:]}}]
+                        }
+                    })
+                elif line.startswith('## '):
+                    blocks_to_create.append({
+                        "block_type": 3,  # 二级标题
+                        "heading2": {
+                            "elements": [{"text_run": {"content": line[3:]}}]
+                        }
+                    })
+                elif line.startswith('# '):
+                    blocks_to_create.append({
+                        "block_type": 2,  # 一级标题
+                        "heading1": {
+                            "elements": [{"text_run": {"content": line[2:]}}]
+                        }
+                    })
+                else:
+                    # 普通文本
+                    blocks_to_create.append({
+                        "block_type": 1,  # 文本块类型是1
+                        "text": {
+                            "elements": [{"text_run": {"content": line}}]
+                        }
+                    })
+            
+            # 4. 分批创建blocks（飞书限制每次最多50个）
+            if blocks_to_create:
+                # 获取文档根block_id
+                doc_info_response = await client.get(
+                    f"https://open.feishu.cn/open-apis/docx/v1/documents/{doc_id}",
+                    headers={"Authorization": f"Bearer {token}"}
+                )
+                
+                doc_info = doc_info_response.json()
+                if doc_info.get("code") == 0:
+                    root_block_id = doc_info.get("data", {}).get("document", {}).get("block_id")
+                    
+                    # 分批创建（每批最多50个）
+                    batch_size = 50
+                    total_batches = (len(blocks_to_create) + batch_size - 1) // batch_size
+                    
+                    for batch_idx in range(total_batches):
+                        start_idx = batch_idx * batch_size
+                        end_idx = min(start_idx + batch_size, len(blocks_to_create))
+                        batch_blocks = blocks_to_create[start_idx:end_idx]
+                        
+                        print(f"Creating batch {batch_idx + 1}/{total_batches}: {len(batch_blocks)} blocks")
+                        
+                        children_response = await client.post(
+                            f"https://open.feishu.cn/open-apis/docx/v1/documents/{doc_id}/blocks/{root_block_id}/children",
+                            headers={
+                                "Authorization": f"Bearer {token}",
+                                "Content-Type": "application/json"
+                            },
+                            json={
+                                "children": batch_blocks,
+                                "index": start_idx  # 指定插入位置
+                            }
+                        )
+                        
+                        children_data = children_response.json()
+                        print(f"Batch {batch_idx + 1} response: {children_data}")
+                        
+                        if children_data.get("code") != 0:
+                            # 安全处理错误消息，避免GBK编码问题
+                            error_msg = children_data.get('msg', 'Unknown error')
+                            try:
+                                print(f"Batch {batch_idx + 1} failed: {error_msg}")
+                            except UnicodeEncodeError:
+                                print(f"Batch {batch_idx + 1} failed: [Error message contains special characters]")
+                            break
+                        else:
+                            print(f"Batch {batch_idx + 1} created successfully")
+                        
+                        # 批次间延迟，避免触发频率限制
+                        if batch_idx < total_batches - 1:
+                            time.sleep(0.5)
+            
+            return {
+                "doc_id": doc_id,
+                "doc_url": doc_url,
+                "message": "文档创建成功"
+            }
+            
+    except Exception as e:
+        # 安全处理异常消息，避免GBK编码问题
+        try:
+            error_msg = str(e)
+            print(f"Error creating document: {error_msg}")
+            raise HTTPException(status_code=500, detail=f"创建文档失败: {error_msg}")
+        except UnicodeEncodeError:
+            print("Error creating document: [Error message contains special characters]")
+            raise HTTPException(status_code=500, detail="创建文档失败: 文档内容包含特殊字符，请检查输入")
+
+
 @router.get("/image/{doc_id}/{image_token}")
 async def get_image(
     doc_id: str,

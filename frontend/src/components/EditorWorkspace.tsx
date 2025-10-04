@@ -13,6 +13,7 @@ import {
   Divider,
   Image,
   Empty,
+  Modal,
 } from 'antd'
 import {
   ArrowLeftOutlined,
@@ -20,6 +21,7 @@ import {
   ReloadOutlined,
   CopyOutlined,
   FileImageOutlined,
+  FileAddOutlined,
 } from '@ant-design/icons'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
@@ -43,6 +45,8 @@ export default function EditorWorkspace({ document, onBack }: Props) {
   const [article, setArticle] = useState('')
   const [sessionId, setSessionId] = useState<string | null>(null)
   const [messages, setMessages] = useState<Message[]>([])
+  const [showPreview, setShowPreview] = useState(false)
+  const [previewImages, setPreviewImages] = useState<Array<{mime_type: string; data: string}>>([])
 
   useEffect(() => {
     loadContent()
@@ -95,12 +99,31 @@ export default function EditorWorkspace({ document, onBack }: Props) {
         setArticle(response.content)
         setSessionId(response.session_id)
         setMessages(response.messages)
+        
+        // 首次生成后，自动加载预览数据（包含图片）
+        try {
+          const previewData = await aiService.previewArticle(response.session_id)
+          setPreviewImages(previewData.images)
+          console.log(`Loaded ${previewData.images.length} images for preview`)
+        } catch (err) {
+          console.error('加载图片失败:', err)
+        }
+        
         message.success('文章生成成功！')
       } else {
         // 精修
         const response = await aiService.refineArticle(sessionId, instruction)
         setArticle(response.content)
         setMessages(response.messages)
+        
+        // 精修后也刷新预览数据
+        try {
+          const previewData = await aiService.previewArticle(sessionId)
+          setPreviewImages(previewData.images)
+        } catch (err) {
+          console.error('加载图片失败:', err)
+        }
+        
         message.success('文章已更新！')
       }
       
@@ -135,6 +158,90 @@ export default function EditorWorkspace({ document, onBack }: Props) {
   const handleCopy = () => {
     navigator.clipboard.writeText(article)
     message.success('已复制到剪贴板')
+  }
+
+  const handleCreateFeishuCopy = async () => {
+    if (!article) {
+      message.warning('请先生成文章')
+      return
+    }
+
+    try {
+      setLoading(true)
+      message.loading({ content: '正在创建飞书文档...', key: 'creating', duration: 0 })
+      
+      // 创建飞书文档
+      const result = await documentService.createFeishuCopy(
+        `${document.title} - AI创作副本`,
+        article,
+        previewImages || []
+      )
+      
+      message.success({ content: '飞书文档创建成功！', key: 'creating', duration: 2 })
+      
+      // 显示成功提示和链接
+      Modal.success({
+        title: '飞书文档创建成功',
+        content: (
+          <div>
+            <p>文档已创建成功！</p>
+            <a href={result.doc_url} target="_blank" rel="noopener noreferrer" className="text-blue-500 underline">
+              点击打开飞书文档
+            </a>
+          </div>
+        ),
+        okText: '知道了'
+      })
+    } catch (error: any) {
+      message.error({ content: `创建失败：${error.response?.data?.detail || error.message}`, key: 'creating' })
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const handlePreview = async () => {
+    if (!sessionId) {
+      message.warning('请先生成文章')
+      return
+    }
+
+    try {
+      setLoading(true)
+      const previewData = await aiService.previewArticle(sessionId)
+      setPreviewImages(previewData.images)
+      setArticle(previewData.article_content)
+      setShowPreview(true)
+      message.success('预览加载成功')
+    } catch (error: any) {
+      const errorMessage = error.response?.data?.detail || error.message || '加载预览失败'
+      message.error(`加载预览失败：${errorMessage}`)
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  // 渲染文章内容，将 ![alt](image_N) 替换为实际图片
+  const renderArticleWithImages = (content: string) => {
+    console.log('renderArticleWithImages called')
+    console.log('previewImages:', previewImages)
+    console.log('content length:', content?.length)
+    
+    if (!previewImages || previewImages.length === 0) {
+      console.log('No preview images, rendering markdown as-is')
+      return <ReactMarkdown remarkPlugins={[remarkGfm]}>{content}</ReactMarkdown>
+    }
+
+    // 替换图片占位符为实际的base64图片
+    let renderedContent = content
+    previewImages.forEach((img, index) => {
+      const placeholderRegex = new RegExp(`!\\[([^\\]]*)\\]\\(image_${index + 1}\\)`, 'g')
+      const imgTag = `![${img.mime_type}](data:${img.mime_type};base64,${img.data})`
+      console.log(`Replacing image_${index + 1} with base64 data (length: ${img.data?.length})`)
+      renderedContent = renderedContent.replace(placeholderRegex, imgTag)
+    })
+
+    console.log('Final rendered content length:', renderedContent.length)
+    return <ReactMarkdown remarkPlugins={[remarkGfm]}>{renderedContent}</ReactMarkdown>
   }
 
   return (
@@ -240,9 +347,17 @@ export default function EditorWorkspace({ document, onBack }: Props) {
             <Card className="max-w-4xl mx-auto">
               <div className="flex justify-between items-center mb-4">
                 <Title level={4} className="!mb-0">
-                  生成的文章
+                  📄 生成的文章
                 </Title>
                 <Space>
+                  <Button 
+                    type="primary"
+                    icon={<FileAddOutlined />} 
+                    onClick={handleCreateFeishuCopy}
+                    loading={loading}
+                  >
+                    创建飞书副本
+                  </Button>
                   <Button icon={<CopyOutlined />} onClick={handleCopy}>
                     复制
                   </Button>
@@ -253,9 +368,17 @@ export default function EditorWorkspace({ document, onBack }: Props) {
               </div>
               <Divider />
               <div className="markdown-body prose max-w-none">
-                <ReactMarkdown remarkPlugins={[remarkGfm]}>
-                  {article}
-                </ReactMarkdown>
+                {previewImages && previewImages.length > 0 && (
+                  <div className="bg-blue-50 border-l-4 border-blue-500 p-4 mb-6">
+                    <Text strong>💡 提示：</Text>
+                    <div className="mt-2 text-sm">
+                      <p>✅ AI已分析图片内容，并智能地将图片插入到最合适的位置</p>
+                      <p>✅ 图片与文本内容协同排版，逻辑连贯</p>
+                      <p>✅ 文档中包含 {previewImages.length} 张图片</p>
+                    </div>
+                  </div>
+                )}
+                {renderArticleWithImages(article)}
               </div>
             </Card>
           ) : (

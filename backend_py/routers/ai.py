@@ -90,38 +90,64 @@ async def create_article(
         # 构建prompt
         combined_text = "\n\n".join(text_content)
         
-        system_prompt = """你是一位专业的内容创作助手。你的任务是将用户提供的草稿内容重新组织成一篇结构清晰、逻辑连贯的文章。
+        system_prompt = """你是一位专业的内容创作和排版助手。你的任务是：
+1. **理解图片内容**：仔细分析每张图片的内容、主题和信息
+2. **智能排版**：根据图片内容和文本内容的关联性，将图片插入到文章最合适的位置
+3. **重新组织**：优化文章结构，使文字和图片协同表达，逻辑连贯
+4. **改善表达**：优化语言，使其流畅自然、专业易读
 
-要求：
-1. 保持原文的核心信息和观点
-2. 优化文章结构，使其更有逻辑性
-3. 改善语言表达，使其更流畅自然
-4. 如果有图片，在合适的位置用 ![图片描述](image_N) 标记插入位置，N是图片序号（从1开始）
-5. 使用Markdown格式输出
-6. 保持专业且易读的写作风格
+⚠️ 重要：图片格式要求
+- 使用Markdown格式
+- **必须**使用这个精确格式标记图片：![图片描述](image_1)、![图片描述](image_2)
+- 图片编号从1开始，依次为 image_1, image_2, image_3...
+- ❌ 错误示例：![图片](image1.jpg)、![图片](img_1)、![图片](picture1)
+- ✅ 正确示例：![产品外观](image_1)、![功能演示](image_2)
+- 图片描述应该简洁说明图片内容
+- 确保图片位置与其相关内容紧密相连
+- 保持原文的核心信息和观点
 """
 
-        user_prompt = f"""原始内容：
+        user_prompt = f"""原始文本内容：
 {combined_text}
 
 用户指示：
 {request.instruction}
 
-请根据以上内容和指示，创作一篇高质量的文章。"""
+任务：请根据文本和图片内容，创作一篇高质量的文章，并将图片智能地插入到最合适的位置。"""
 
         if image_parts:
-            user_prompt += f"\n\n注意：文档中包含 {len(image_parts)} 张图片，请在文章合适位置标记图片插入点。"
+            user_prompt += f"\n\n📷 文档中包含 {len(image_parts)} 张图片，请：\n1. 仔细理解每张图片的内容\n2. 根据图片与文本的关联性，将图片插入到最合适的位置\n3. 为每张图片添加简洁的描述"
+        else:
+            user_prompt += "\n\n注意：文档中没有图片。"
         
         # 初始化AI提供商
         ai_provider_name = os.getenv("AI_PROVIDER", "gemini")
         print(f"Using AI Provider: {ai_provider_name}")
         print(f"Generated prompt length: {len(user_prompt)}")
+        print(f"Number of images: {len(image_parts)}")
         
         try:
             ai_provider = AIProvider.create(ai_provider_name)
-            generated_text = ai_provider.generate(user_prompt, timeout=30)
+            
+            # 检查是否支持多模态
+            if image_parts and not ai_provider.supports_multimodal():
+                print(f"⚠️ Warning: {ai_provider_name} does not support image understanding")
+                user_prompt += f"\n\n⚠️ 注意：当前AI模型（{ai_provider_name}）不支持图片理解，仅能根据文本内容创作。建议切换到支持多模态的模型（如Gemini或千问VL）以实现图片理解和智能排版功能。"
+            
+            # 调用AI生成（传入图片）
+            generated_text = ai_provider.generate(user_prompt, images=image_parts, timeout=60)
             print(f"Generated text length: {len(generated_text)}")
-                
+            
+            # 修正可能的图片格式错误
+            import re
+            # 修正 image1.jpg -> image_1
+            generated_text = re.sub(r'!\[([^\]]*)\]\(image(\d+)\.(?:jpg|png|jpeg|gif)\)', r'![\1](image_\2)', generated_text)
+            # 修正 img_1 -> image_1
+            generated_text = re.sub(r'!\[([^\]]*)\]\(img_(\d+)\)', r'![\1](image_\2)', generated_text)
+            # 修正 picture1 -> image_1
+            generated_text = re.sub(r'!\[([^\]]*)\]\(picture(\d+)\)', r'![\1](image_\2)', generated_text)
+            print(f"After format fix: {len(generated_text)}")
+                    
         except TimeoutError as e:
             print(f"AI API call timed out: {e}")
             # 如果超时，返回带提示的示例响应
@@ -213,6 +239,7 @@ async def refine_article(request: RefineRequest):
         
         # 构建新的prompt
         current_article = session["current_article"]
+        images = session.get("images", [])
         
         refine_prompt = f"""当前文章版本：
 {current_article}
@@ -222,24 +249,52 @@ async def refine_article(request: RefineRequest):
 
 请根据用户的要求对文章进行修改，输出完整的修改后文章（使用Markdown格式）。"""
 
+        if images:
+            refine_prompt += f"\n\n⚠️ 重要：文档中有 {len(images)} 张图片\n"
+            refine_prompt += "- **必须**使用精确格式：![图片描述](image_1)、![图片描述](image_2)...\n"
+            refine_prompt += "- ❌ 错误：![图片](image1.jpg)、![图片](img_1)\n"
+            refine_prompt += "- ✅ 正确：![产品外观](image_1)、![功能演示](image_2)"
+
         # 添加到消息历史
         session["messages"].append({
             "role": "user",
             "content": refine_prompt
         })
         
-        # 调用Gemini
-        model = get_gemini_config().GenerativeModel("gemini-1.5-pro")
+        # 使用当前配置的AI提供商
+        ai_provider_name = os.getenv("AI_PROVIDER", "gemini")
+        print(f"Refine using AI Provider: {ai_provider_name}")
         
-        # 使用历史消息（保留上下文）
-        chat = model.start_chat(history=[
-            {"role": msg["role"], "parts": [msg["content"]]}
-            for msg in session["messages"][1:-1]  # 排除system和最新的user消息
-            if msg["role"] in ["user", "model"]
-        ])
-        
-        response = chat.send_message(refine_prompt)
-        refined_text = response.text
+        try:
+            ai_provider = AIProvider.create(ai_provider_name)
+            
+            # 检查是否支持多模态（如果有图片）
+            if images and not ai_provider.supports_multimodal():
+                refine_prompt += f"\n\n⚠️ 注意：当前AI模型（{ai_provider_name}）不支持图片理解，仅能根据文本内容精修。"
+            
+            # 调用AI生成（传入图片以保持上下文）
+            refined_text = ai_provider.generate(refine_prompt, images=images if ai_provider.supports_multimodal() else [], timeout=60)
+            print(f"Refined text length: {len(refined_text)}")
+            
+            # 修正可能的图片格式错误
+            import re
+            refined_text = re.sub(r'!\[([^\]]*)\]\(image(\d+)\.(?:jpg|png|jpeg|gif)\)', r'![\1](image_\2)', refined_text)
+            refined_text = re.sub(r'!\[([^\]]*)\]\(img_(\d+)\)', r'![\1](image_\2)', refined_text)
+            refined_text = re.sub(r'!\[([^\]]*)\]\(picture(\d+)\)', r'![\1](image_\2)', refined_text)
+            print(f"After format fix: {len(refined_text)}")
+                
+        except TimeoutError as e:
+            print(f"Refine API call timed out: {e}")
+            refined_text = f"""# ⚠️ AI精修超时
+
+请求超时，请检查网络连接后重试。
+
+当前文章版本：
+{current_article}"""
+            
+        except Exception as e:
+            print(f"Refine API call failed: {e}")
+            raise HTTPException(status_code=500, detail=f"精修失败: {str(e)}")
         
         # 更新会话
         session["messages"].append({
@@ -304,3 +359,20 @@ async def get_session(session_id: str):
     }
 
 
+@router.get("/preview/{session_id}")
+async def preview_article(session_id: str):
+    """
+    预览重新排版后的文章（包含图片）
+    返回文章内容和图片数据，用于前端渲染
+    """
+    session = sessions.get(session_id)
+    if not session:
+        raise HTTPException(status_code=404, detail="会话不存在")
+    
+    return {
+        "session_id": session_id,
+        "doc_id": session["doc_id"],
+        "article_content": session["current_article"],
+        "images": session.get("images", []),  # 图片数据（base64）
+        "original_blocks": session.get("original_blocks", [])
+    }

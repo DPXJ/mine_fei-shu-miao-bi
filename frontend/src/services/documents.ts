@@ -71,6 +71,30 @@ class DocumentService {
     const token = authService.getToken()
     return `${API_URL}/api/documents/image/${docId}/${imageToken}?token=${token}`
   }
+
+  /**
+   * 创建飞书文档副本
+   */
+  async createFeishuCopy(
+    title: string,
+    content: string,
+    images: Array<{mime_type: string; data: string}>
+  ): Promise<{doc_id: string; doc_url: string; message: string}> {
+    const response = await axios.post(
+      `${API_URL}/api/documents/create`,
+      {
+        title,
+        content,
+        images
+      },
+      {
+        headers: {
+          Authorization: `Bearer ${authService.getToken()}`,
+        },
+      }
+    )
+    return response.data
+  }
 }
 
 export const documentService = new DocumentService()
