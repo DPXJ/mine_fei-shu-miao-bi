@@ -8,6 +8,16 @@ import os
 
 from routers import auth, documents, ai
 
+# 直接设置环境变量，避免.env文件编码问题
+os.environ["FEISHU_APP_ID"] = "cli_a855c1780938900b"
+os.environ["FEISHU_APP_SECRET"] = "DXAXNDNvdviTiPgt64f3rbqF6pPCiVEv"
+os.environ["FEISHU_REDIRECT_URI"] = "http://localhost:3000/auth/callback"
+os.environ["GEMINI_API_KEY"] = "AIzaSyBKO6KCRL_elzgXliklCYe8HkKvvyos9Kc"
+os.environ["DEEPSEEK_API_KEY"] = "sk-7a5f88d8af69468590b756add1514b57"
+os.environ["AI_PROVIDER"] = "deepseek"  # 使用DeepSeek
+os.environ["BACKEND_URL"] = "http://localhost:8000"
+os.environ["FRONTEND_URL"] = "http://localhost:3000"
+
 # 加载环境变量
 load_dotenv()
 

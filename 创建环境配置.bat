@@ -1,17 +1,19 @@
 @echo off
-echo 创建 .env 文件...
+echo 创建环境配置文件...
 
-echo # 飞书应用配置 > .env
+cd /d backend_py
+
+echo # Feishu Configuration > .env
 echo FEISHU_APP_ID=cli_a855c1780938900b >> .env
 echo FEISHU_APP_SECRET=DXAXNDNvdviTiPgt64f3rbqF6pPCiVEv >> .env
 echo FEISHU_REDIRECT_URI=http://localhost:3000/auth/callback >> .env
 echo. >> .env
-echo # Google Gemini API配置 >> .env
-echo GEMINI_API_KEY=AIzaSyBKO6KCRL_elzgXliklCYe8HnKvvyos9Kc >> .env
+echo # Gemini Configuration >> .env
+echo GEMINI_API_KEY=AIzaSyBKO6KCRL_elzgXliklCYe8HkKvvyos9Kc >> .env
 echo. >> .env
-echo # 服务器配置 >> .env
+echo # Server Configuration >> .env
 echo BACKEND_URL=http://localhost:8000 >> .env
 echo FRONTEND_URL=http://localhost:3000 >> .env
 
-echo .env 文件创建完成！
+echo .env文件创建完成！
 pause

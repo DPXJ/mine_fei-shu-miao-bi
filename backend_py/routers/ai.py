@@ -1,19 +1,20 @@
 """
-AI创作路由 - 使用Google Gemini
+AI创作路由 - 支持多种AI提供商（Gemini, DeepSeek）
 """
 from fastapi import APIRouter, HTTPException, Header
 from pydantic import BaseModel
 from typing import List, Optional, Dict, Any
-import google.generativeai as genai
 import os
 import httpx
 import base64
 from io import BytesIO
 
-router = APIRouter()
+# 导入AI提供商
+import sys
+sys.path.append(os.path.dirname(os.path.dirname(__file__)))
+from ai_provider import AIProvider
 
-# 配置Gemini
-genai.configure(api_key=os.getenv("GEMINI_API_KEY"))
+router = APIRouter()
 
 # 会话存储（生产环境应使用Redis等）
 sessions: Dict[str, Dict[str, Any]] = {}
@@ -111,26 +112,65 @@ async def create_article(
         if image_parts:
             user_prompt += f"\n\n注意：文档中包含 {len(image_parts)} 张图片，请在文章合适位置标记图片插入点。"
         
-        # 调用Gemini API
-        print("Initializing Gemini model...")
-        model = genai.GenerativeModel("gemini-1.5-pro")
-        
-        # 构建消息内容
-        contents = [user_prompt]
+        # 初始化AI提供商
+        ai_provider_name = os.getenv("AI_PROVIDER", "gemini")
+        print(f"Using AI Provider: {ai_provider_name}")
         print(f"Generated prompt length: {len(user_prompt)}")
         
-        print("Calling Gemini API...")
-        response = model.generate_content(
-            contents,
-            generation_config=genai.GenerationConfig(
-                temperature=0.7,
-                max_output_tokens=4096,
-            )
-        )
-        
-        print("Gemini API response received")
-        generated_text = response.text
-        print(f"Generated text length: {len(generated_text)}")
+        try:
+            ai_provider = AIProvider.create(ai_provider_name)
+            generated_text = ai_provider.generate(user_prompt, timeout=30)
+            print(f"Generated text length: {len(generated_text)}")
+                
+        except TimeoutError as e:
+            print(f"AI API call timed out: {e}")
+            # 如果超时，返回带提示的示例响应
+            generated_text = f"""# ⚠️ AI生成超时
+
+**问题：** API请求超时（30秒）
+
+**可能原因：**
+1. 网络连接问题（国内访问Gemini需要VPN）
+2. API服务暂时不可用
+3. 请求内容过长
+
+**建议：**
+1. 如果使用Gemini：请开启VPN后重试
+2. 切换到DeepSeek（国内访问更稳定）：
+   - 获取DeepSeek API Key: https://platform.deepseek.com
+   - 在.env文件中添加：`DEEPSEEK_API_KEY=你的key`
+   - 在.env文件中添加：`AI_PROVIDER=deepseek`
+
+---
+
+## 基于文档内容的文章预览
+
+{combined_text[:500]}...
+
+*重新配置后请再次点击生成*"""
+            print("Using fallback content due to timeout")
+            
+        except Exception as e:
+            print(f"AI API call failed: {e}")
+            # 如果其他错误，返回错误提示
+            generated_text = f"""# ❌ AI生成失败
+
+**错误信息：** {str(e)}
+
+**建议：**
+1. 检查API Key是否正确配置
+2. 确认网络连接正常
+3. 如果使用Gemini需要VPN
+4. 考虑切换到DeepSeek（国内访问更稳定）
+
+---
+
+## 文档内容预览
+
+{combined_text[:500]}...
+
+*解决问题后请再次尝试*"""
+            print("Using fallback content due to error")
         
         # 创建会话
         session_id = f"{request.doc_id}_{os.urandom(8).hex()}"
@@ -189,7 +229,7 @@ async def refine_article(request: RefineRequest):
         })
         
         # 调用Gemini
-        model = genai.GenerativeModel("gemini-1.5-pro")
+        model = get_gemini_config().GenerativeModel("gemini-1.5-pro")
         
         # 使用历史消息（保留上下文）
         chat = model.start_chat(history=[
